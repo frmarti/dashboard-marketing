@@ -1,35 +1,535 @@
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Consolidado MKT 2026 - Bci')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consolidado MKT 2026 - Bci Inversiones</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse para leer CSV localmente -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bciBlue: '#0f265c',
+                        bciLightBlue: '#1e62ec',
+                        bciGold: '#d97706',
+                        bciGreen: '#059669',
+                        bciRed: '#dc2626',
+                        bciPurple: '#7c3aed',
+                        bciSlate: '#0f172a',
+                        bciSegmentBlue: '#1e62ec'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
-function obtenerDatos() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = sheet.getDataRange().getDisplayValues();
-  if (data.length <= 1) return [];
+    <header class="bg-bciSlate text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="h-10 w-10 rounded-lg bg-gradient-to-tr from-bciLightBlue to-indigo-500 flex items-center justify-center font-bold text-lg shadow-lg">Bci</div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight">Consolidado MKT 2026</h1>
+                    <p class="text-xs text-slate-400">Visualizador de Actividades e Inversiones</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <!-- Botón de Importación Local de CSV -->
+                <input type="file" id="csv-upload" accept=".csv" class="hidden" onchange="handleFileUpload(event)">
+                <button onclick="document.getElementById('csv-upload').click()" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-md text-white border border-slate-700">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <span>Importar Excel</span>
+                </button>
 
-  var headers = data[0].map(function(h) { return h.trim().toLowerCase(); });
-  var result = [];
-  
-  for (var i = 1; i < data.length; i++) {
-    var row = data[i];
-    var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      obj[headers[j]] = row[j];
-    }
-    result.push(obj);
-  }
-  return result;
-}
+                <!-- Botón de Acción Manual de Marketing -->
+                <button onclick="openEventModal()" class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-md">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    <span>Nueva Actividad</span>
+                </button>
+            </div>
+        </div>
+    </header>
 
-function guardarEvento(data) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.appendRow([
-    data.id, data.title, data.date, data.category, data.segment, 
-    data.location, data.responsable, data.contraparte, data.description, 
-    data.cost, data.invitados, data.medicionType, data.medicionValue, data.media.join(", ")
-  ]);
-  return true;
-}
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
+        
+        <!-- SUMMARY KPI CARDS -->
+        <section class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Total Actividades</p>
+                    <h3 id="kpi-total-activities" class="text-3xl font-black text-slate-900 mt-1">0</h3>
+                    <p class="text-xs text-slate-400 mt-1">Suma de todas las categorías</p>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-900 text-white"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg></div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Cantidad de Eventos</p>
+                    <h3 id="kpi-total-events" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                    <p class="text-xs text-slate-400 mt-1">Registrados en el año</p>
+                </div>
+                <div class="p-3 rounded-xl bg-purple-50 text-purple-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Cantidad de Campañas</p>
+                    <h3 id="kpi-total-campaigns" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                    <p class="text-xs text-slate-400 mt-1">BAU, Spot y Redes Sociales</p>
+                </div>
+                <div class="p-3 rounded-xl bg-amber-50 text-amber-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"></path></svg></div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Podcast y Cápsulas</p>
+                    <h3 id="kpi-total-podcasts" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                    <p class="text-xs text-slate-400 mt-1">Hitos de contenido digital</p>
+                </div>
+                <div class="p-3 rounded-xl bg-blue-50 text-blue-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg></div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Cantidad de Informes</p>
+                    <h3 id="kpi-total-reports" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                    <p class="text-xs text-slate-400 mt-1">Reportes y estudios clave</p>
+                </div>
+                <div class="p-3 rounded-xl bg-sky-50 text-sky-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></div>
+            </div>
+        </section>
+
+        <!-- MAIN LAYOUT -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- SIDEBAR FILTERS -->
+            <div class="lg:col-span-3 flex flex-col gap-5">
+                <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h4 class="font-bold text-slate-950 flex items-center gap-2 text-sm">Filtros de Búsqueda</h4>
+                        <button onclick="resetFilters()" class="text-xs text-blue-600 hover:text-blue-800 font-semibold">Limpiar</button>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Buscar por Texto</label>
+                        <input type="text" id="search-input" onkeyup="handleFilterChange()" placeholder="Ej: APV, Renta, Viña..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Categoría</label>
+                        <div class="flex flex-col gap-2 mt-1" id="category-filters"></div>
+                    </div>
+                    <div class="flex flex-col gap-1.5 border-t border-slate-100 pt-3">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Segmento Target</label>
+                        <div class="flex flex-wrap gap-1.5 mt-1.5" id="segment-filters"></div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-tr from-bciSlate to-indigo-950 text-white p-5 rounded-2xl shadow-md relative overflow-hidden">
+                    <div class="absolute -right-10 -bottom-10 opacity-10 text-white">
+                        <svg class="w-40 h-40" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    </div>
+                    <h5 class="font-bold text-sm">Consolidado Corporativo</h5>
+                    <p class="text-xs text-indigo-200 mt-1.5 leading-relaxed">Este portal opera de forma local. Importa tu CSV para visualizar las métricas y la distribución anual de actividades.</p>
+                </div>
+            </div>
+
+            <!-- CENTRAL CONTAINER -->
+            <div class="lg:col-span-9 bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+                <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-50/50">
+                    <div class="flex items-center space-x-4">
+                        <button onclick="prevMonth()" class="p-2 hover:bg-slate-200 rounded-xl"><svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                        <h2 id="calendar-title" class="text-lg font-bold text-slate-900 min-w-[160px] text-center">Mes</h2>
+                        <button onclick="nextMonth()" class="p-2 hover:bg-slate-200 rounded-xl"><svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                    </div>
+                    <div class="flex bg-slate-200 p-1 rounded-xl self-start sm:self-auto">
+                        <button onclick="switchView('calendar')" id="btn-view-calendar" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow-sm">Calendario</button>
+                        <button onclick="switchView('list')" id="btn-view-list" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-600">Lista</button>
+                        <button onclick="switchView('charts')" id="btn-view-charts" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-600">Analíticas</button>
+                    </div>
+                </div>
+
+                <div class="p-5 flex-grow">
+                    <!-- CALENDAR -->
+                    <div id="view-calendar" class="flex flex-col">
+                        <div class="grid grid-cols-7 gap-1 mb-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+                        </div>
+                        <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+                    </div>
+
+                    <!-- LIST -->
+                    <div id="view-list" class="hidden overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="text-[10px] text-slate-400 uppercase bg-slate-50 font-bold border-b border-slate-100">
+                                <tr><th class="px-4 py-3">Fecha</th><th class="px-4 py-3">Título</th><th class="px-4 py-3">Categoría</th><th class="px-4 py-3">Segmento</th><th class="px-4 py-3">Costo</th><th class="px-4 py-3 text-center">Acción</th></tr>
+                            </thead>
+                            <tbody id="list-table-body"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- CHARTS -->
+                    <div id="view-charts" class="hidden flex flex-col gap-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                                <h5 class="font-bold text-xs text-slate-950 mb-4 uppercase">Hitos por Mes</h5>
+                                <div class="flex items-end justify-between h-48 px-4 pt-4 border-b border-slate-200" id="chart-monthly-bars"></div>
+                                <div class="flex justify-between text-[9px] font-bold text-slate-400 mt-2 px-1">
+                                    <span>E</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span>
+                                </div>
+                            </div>
+                            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                                <h5 class="font-bold text-xs text-slate-950 mb-3 uppercase">Distribución</h5>
+                                <div class="flex flex-col gap-2.5 max-h-[190px] overflow-y-auto" id="chart-category-rows"></div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
+                                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100"><p class="text-[10px] font-bold text-slate-400 uppercase">Segmento Principal</p><p id="stats-peak-segment" class="text-xs font-bold text-slate-800 mt-2">N/A</p><p id="stats-peak-value" class="text-2xl font-black text-blue-600 mt-1">0</p></div>
+                                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100"><p class="text-[10px] font-bold text-slate-400 uppercase">Inversión Estimada</p><p class="text-xs font-bold text-slate-800 mt-2">Acumulado</p><p id="stats-total-cost" class="text-2xl font-black text-emerald-600 mt-1">$0</p></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL ADD EVENT -->
+    <div id="event-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="bg-bciSlate text-white px-6 py-4 flex items-center justify-between"><h3 class="font-bold text-sm">Nueva Actividad</h3><button onclick="closeEventModal()" class="p-1 hover:bg-slate-800 rounded">X</button></div>
+            <form onsubmit="saveEventForm(event)" class="p-6 flex flex-col gap-4 text-xs">
+                <input type="hidden" id="form-event-id">
+                <input type="text" id="form-title" required placeholder="Título del evento" class="w-full bg-slate-50 border rounded-xl px-3 py-2 outline-none">
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="date" id="form-date" required class="w-full bg-slate-50 border rounded-xl px-3 py-2 outline-none">
+                    <select id="form-segment" class="w-full bg-slate-50 border rounded-xl px-3 py-2 outline-none"><option value="BAM">BAM</option><option value="BCB">BCB</option><option value="Private Banking">Private Banking</option><option value="Afluente">Afluente</option><option value="Masivo">Masivo</option><option value="Interno">Interno</option></select>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <select id="form-category" class="w-full bg-slate-50 border rounded-xl px-3 py-2 outline-none"><option value="eventos">Eventos</option><option value="campanas">Campañas</option><option value="podcast-capsulas">Podcast/Cápsulas</option><option value="informes">Informes</option><option value="auspicios">Auspicios</option></select>
+                    <input type="number" id="form-cost" placeholder="Costo ($)" class="w-full bg-slate-50 border rounded-xl px-3 py-2 outline-none">
+                    <input type="number" id="form-guests" placeholder="Invitados" class="w-full bg-slate-50 border rounded-xl px-3 py-2 outline-none">
+                </div>
+                <div class="flex justify-end gap-2 pt-4">
+                    <button type="button" onclick="closeEventModal()" class="px-4 py-2 border rounded-xl font-semibold">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 bg-blue-600 text-white rounded-xl font-semibold">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DRAWER DETAIL -->
+    <div id="drawer-panel" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-slate-900/40" onclick="closeDrawer()"></div>
+        <div class="absolute inset-y-0 right-0 max-w-sm w-full bg-white shadow-2xl p-6 flex flex-col gap-4">
+            <div class="flex justify-between items-start border-b pb-4"><h2 id="drawer-event-title" class="font-bold text-lg"></h2><button onclick="closeDrawer()">X</button></div>
+            <p id="drawer-event-date" class="text-sm font-semibold text-blue-600"></p>
+            <p id="drawer-cost" class="text-sm font-bold text-emerald-600"></p>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast-notification" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center z-50 transform translate-y-24 opacity-0 transition-all duration-300">
+        <p id="toast-text" class="text-xs font-semibold">Notificación</p>
+    </div>
+
+    <script>
+        const marketingCategories = { "eventos": { label: "Eventos", color: "bg-[#eccfe8]", light: "bg-[#fcf0fa] border-[#f9e1f5]" }, "campanas": { label: "Campañas", color: "bg-[#fef08a]", light: "bg-[#fefce8] border-[#fef08a]" }, "podcast-capsulas": { label: "Podcast/Cápsulas", color: "bg-[#dbeafe]", light: "bg-[#f0f9ff] border-[#dbeafe]" }, "informes": { label: "Informes", color: "bg-[#93c5fd]", light: "bg-[#f0f7ff] border-[#93c5fd]" }, "auspicios": { label: "Auspicios", color: "bg-[#c1f0c2]", light: "bg-[#f6fff6] border-[#c1f0c2]" }};
+        const segmentList = ["BAM", "BCB", "Private Banking", "Afluente", "Masivo", "Interno", "Institucionales BAM", "Institucionales BCB"];
+        let events = []; let currentDate = new Date(2026, 5, 1); let currentView = "calendar";
+        let activeFilters = { search: "", categories: Object.keys(marketingCategories), segments: [...segmentList] };
+
+        window.onload = function() {
+            initFilterPanels();
+            loadResilientLocalBackup(); 
+        };
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showToast("Procesando archivo CSV...", "info");
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                transformHeader: function(header) {
+                    return header.trim().toLowerCase();
+                },
+                complete: function(results) {
+                    events = results.data.map((row, index) => {
+                        let rawCategory = (row["category"] || "otros").toLowerCase().trim();
+                        if(rawCategory === "campañas" || rawCategory === "campaña") rawCategory = "campanas";
+                        let costoString = (row["cost"] || "0").toString().replace(/\D/g,'');
+
+                        return {
+                            id: row["id"] || "ev_csv_" + index,
+                            title: row["title"] || "Sin título",
+                            date: row["date"] || "",
+                            category: rawCategory,
+                            segment: (row["segment"] || "").trim(),
+                            location: row["location"] || "",
+                            responsable: row["responsable"] || "",
+                            contraparte: row["contraparte"] || "",
+                            description: row["description"] || "",
+                            cost: parseInt(costoString) || 0,
+                            invitados: parseInt(row["invitados"]) || 0
+                        };
+                    });
+
+                    saveStateToLocalStorage();
+                    updateDashboard();
+                    showToast("¡Datos importados con éxito!", "success");
+                },
+                error: function(err) {
+                    console.error("Error al leer:", err);
+                    showToast("Error al leer el archivo CSV", "error");
+                }
+            });
+            event.target.value = ''; 
+        }
+
+        function loadResilientLocalBackup() {
+            const rawData = localStorage.getItem("bci_mkt_consolidado_offline");
+            if (rawData) {
+                try {
+                    events = JSON.parse(rawData);
+                } catch(err) {}
+            }
+            updateDashboard();
+        }
+
+        function saveStateToLocalStorage() {
+            localStorage.setItem("bci_mkt_consolidado_offline", JSON.stringify(events));
+        }
+
+        function isToday(dateStr) {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            return dateStr === `${yyyy}-${mm}-${dd}`;
+        }
+
+        function initFilterPanels() {
+            const catContainer = document.getElementById("category-filters");
+            catContainer.innerHTML = "";
+            Object.keys(marketingCategories).forEach(key => {
+                const cat = marketingCategories[key];
+                catContainer.innerHTML += `
+                    <label class="flex items-center space-x-2.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked value="${key}" onchange="toggleCategoryFilter('${key}')" class="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5">
+                        <span class="w-3.5 h-3.5 rounded ${cat.color}"></span><span>${cat.label}</span>
+                    </label>`;
+            });
+
+            const segmentsContainer = document.getElementById("segment-filters");
+            segmentsContainer.innerHTML = "";
+            segmentList.forEach(seg => {
+                segmentsContainer.innerHTML += `<button id="seg-pill-${seg.replace(/\s+/g, '-')}" onclick="toggleSegmentFilter('${seg}')" class="px-3 py-1.5 rounded-full text-[10px] font-bold shadow-sm transition-all">${seg}</button>`;
+            });
+
+            const legendFooter = document.getElementById("legend-footer");
+            legendFooter.innerHTML = `<span class="font-bold text-slate-400 uppercase">Leyenda:</span>`;
+            Object.keys(marketingCategories).forEach(key => {
+                const cat = marketingCategories[key];
+                legendFooter.innerHTML += `<div class="flex items-center space-x-1.5 mr-2"><span class="w-3 h-3 rounded ${cat.color}"></span><span class="text-slate-700 font-bold">${cat.label}</span></div>`;
+            });
+            updateSegmentPillStyles();
+        }
+
+        function updateSegmentPillStyles() {
+            segmentList.forEach(seg => {
+                const pill = document.getElementById(`seg-pill-${seg.replace(/\s+/g, '-')}`);
+                if (pill) {
+                    if (activeFilters.segments.includes(seg)) {
+                        pill.className = "px-3 py-1.5 rounded-full text-[10px] font-bold shadow-sm transition-all bg-bciSegmentBlue text-white";
+                    } else {
+                        pill.className = "px-3 py-1.5 rounded-full text-[10px] font-bold shadow-sm transition-all bg-white text-slate-700 border border-slate-200";
+                    }
+                }
+            });
+        }
+
+        function toggleCategoryFilter(key) {
+            const index = activeFilters.categories.indexOf(key);
+            if (index > -1) activeFilters.categories.splice(index, 1);
+            else activeFilters.categories.push(key);
+            updateDashboard();
+        }
+
+        function toggleSegmentFilter(seg) {
+            const index = activeFilters.segments.indexOf(seg);
+            if (index > -1) activeFilters.segments.splice(index, 1);
+            else activeFilters.segments.push(seg);
+            updateSegmentPillStyles();
+            updateDashboard();
+        }
+
+        function handleFilterChange() {
+            activeFilters.search = document.getElementById("search-input").value.trim().toLowerCase();
+            updateDashboard();
+        }
+
+        function resetFilters() {
+            document.getElementById("search-input").value = "";
+            activeFilters.search = "";
+            activeFilters.categories = Object.keys(marketingCategories);
+            activeFilters.segments = [...segmentList];
+            document.querySelectorAll('#category-filters input').forEach(cb => cb.checked = true);
+            updateSegmentPillStyles();
+            updateDashboard();
+        }
+
+        function getFilteredEvents() {
+            return events.filter(e => {
+                const searchStr = (e.title + e.description + e.location + e.responsable).toLowerCase();
+                const matchSearch = activeFilters.search === "" || searchStr.includes(activeFilters.search);
+                const matchCategory = activeFilters.categories.includes(e.category);
+                const matchSegment = activeFilters.segments.includes(e.segment);
+                return matchSearch && matchCategory && matchSegment;
+            });
+        }
+
+        function updateDashboard() {
+            renderKPIs();
+            if (currentView === "calendar") renderCalendar();
+            else if (currentView === "list") renderList();
+            else if (currentView === "charts") renderCharts();
+        }
+
+        function renderKPIs() {
+            const filtered = getFilteredEvents();
+            document.getElementById("kpi-total-activities").innerText = filtered.length;
+            document.getElementById("kpi-total-events").innerText = filtered.filter(e => e.category === "eventos").length;
+            document.getElementById("kpi-total-campaigns").innerText = filtered.filter(e => e.category === "campanas").length;
+            document.getElementById("kpi-total-podcasts").innerText = filtered.filter(e => e.category === "podcast-capsulas").length;
+            document.getElementById("kpi-total-reports").innerText = filtered.filter(e => e.category === "informes").length;
+        }
+
+        function renderCalendar() {
+            const calendarGrid = document.getElementById("calendar-grid");
+            calendarGrid.innerHTML = "";
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            document.getElementById("calendar-title").innerText = `${monthNames[month]} ${year}`;
+
+            let firstDayIndex = new Date(year, month, 1).getDay();
+            firstDayIndex = (firstDayIndex === 0) ? 6 : firstDayIndex - 1; 
+
+            const lastDayDate = new Date(year, month + 1, 0).getDate();
+            const prevLastDayDate = new Date(year, month, 0).getDate();
+
+            const filteredEvents = getFilteredEvents();
+            const eventsByDate = {};
+            filteredEvents.forEach(ev => {
+                eventsByDate[ev.date] = eventsByDate[ev.date] || [];
+                eventsByDate[ev.date].push(ev);
+            });
+
+            for (let i = firstDayIndex; i > 0; i--) {
+                const dayNum = prevLastDayDate - i + 1;
+                const dateStr = `${month===0?year-1:year}-${String(month===0?12:month).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+                calendarGrid.appendChild(createCalendarNode(dayNum, true, dateStr, []));
+            }
+            for (let i = 1; i <= lastDayDate; i++) {
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+                calendarGrid.appendChild(createCalendarNode(i, false, dateStr, eventsByDate[dateStr] || []));
+            }
+            const rem = (firstDayIndex + lastDayDate) % 7 === 0 ? 0 : 7 - ((firstDayIndex + lastDayDate) % 7);
+            for (let i = 1; i <= rem; i++) {
+                const dateStr = `${month===11?year+1:year}-${String(month===11?1:month+2).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+                calendarGrid.appendChild(createCalendarNode(i, true, dateStr, []));
+            }
+        }
+
+        function createCalendarNode(dayNum, isTrailing, dateStr, dayEvents) {
+            const cell = document.createElement("div"); cell.className = `min-h-[100px] border rounded-xl p-1.5 ${isTrailing?'bg-slate-50 opacity-40':'bg-white'}`;
+            cell.innerHTML = `<div class="text-[10px] font-bold text-slate-500 mb-1">${dayNum}</div>`;
+            dayEvents.forEach(ev => {
+                const evNode = document.createElement("div"); const cat = marketingCategories[ev.category];
+                evNode.className = `text-[9px] font-extrabold px-1.5 py-1 rounded truncate cursor-pointer border shadow-sm ${cat.light}`;
+                evNode.innerText = ev.title; evNode.onclick = () => openDrawer(ev.id);
+                cell.appendChild(evNode);
+            });
+            return cell;
+        }
+
+        function switchView(v) {
+            currentView = v;
+            ["calendar", "list", "charts"].forEach(name => {
+                document.getElementById(`view-${name}`).classList.add("hidden");
+                document.getElementById(`btn-view-${name}`).className = "px-4 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100";
+            });
+            document.getElementById(`view-${v}`).classList.remove("hidden");
+            document.getElementById(`btn-view-${v}`).className = "px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow-sm text-slate-900";
+            updateDashboard();
+        }
+
+        function prevMonth() { currentDate.setMonth(currentDate.getMonth() - 1); updateDashboard(); }
+        function nextMonth() { currentDate.setMonth(currentDate.getMonth() + 1); updateDashboard(); }
+
+        function renderList() {
+            const tb = document.getElementById("list-table-body"); tb.innerHTML = "";
+            getFilteredEvents().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(ev => {
+                const tr = document.createElement("tr"); tr.className = "border-b hover:bg-slate-50 text-xs";
+                tr.innerHTML = `<td class="px-4 py-3">${ev.date}</td><td class="px-4 py-3 font-bold">${ev.title}</td><td class="px-4 py-3">${marketingCategories[ev.category].label}</td><td class="px-4 py-3">${ev.segment}</td><td class="px-4 py-3">$${ev.cost.toLocaleString('es-CL')}</td><td class="px-4 py-3 text-center"><button onclick="openDrawer('${ev.id}')" class="text-blue-600">Ver</button></td>`;
+                tb.appendChild(tr);
+            });
+        }
+
+        function renderCharts() {
+            const filtered = getFilteredEvents(); const hist = Array(12).fill(0);
+            filtered.forEach(e => { const d = new Date(e.date+"T00:00:00"); if(!isNaN(d)) hist[d.getMonth()]++; });
+            const maxVal = Math.max(...hist, 1);
+            document.getElementById("chart-monthly-bars").innerHTML = hist.map(c => `<div class="flex flex-col flex-1 items-center"><div class="w-5 bg-blue-500 rounded-t" style="height:${(c/maxVal)*100}%"></div></div>`).join('');
+            
+            const totalCost = filtered.reduce((acc, curr) => acc + curr.cost, 0);
+            document.getElementById("stats-total-cost").innerText = `$${totalCost.toLocaleString('es-CL')}`;
+        }
+
+        function openDrawer(id) {
+            const ev = events.find(e => e.id === id); if(!ev) return;
+            document.getElementById("drawer-panel").classList.remove("hidden");
+            document.getElementById("drawer-event-title").innerText = ev.title;
+            document.getElementById("drawer-event-date").innerText = ev.date;
+            document.getElementById("drawer-cost").innerText = `$${ev.cost.toLocaleString('es-CL')}`;
+        }
+        function closeDrawer() { document.getElementById("drawer-panel").classList.add("hidden"); }
+        function openEventModal() { document.getElementById("event-modal").classList.remove("hidden"); }
+        function closeEventModal() { document.getElementById("event-modal").classList.add("hidden"); }
+
+        function saveEventForm(e) {
+            e.preventDefault();
+            const newEvent = {
+                id: "ev_" + Date.now(), title: document.getElementById("form-title").value, date: document.getElementById("form-date").value,
+                category: document.getElementById("form-category").value, segment: document.getElementById("form-segment").value,
+                cost: parseInt(document.getElementById("form-cost").value)||0, invitados: parseInt(document.getElementById("form-guests").value)||0,
+                location: "", description: "", contraparte: "", responsable: "", medicionType: "", medicionValue: "", media: []
+            };
+            
+            events.push(newEvent);
+            saveStateToLocalStorage(); updateDashboard(); closeEventModal();
+            showToast("Evento guardado localmente", "success");
+        }
+
+        function showToast(msg, type="info") {
+            const t = document.getElementById("toast-notification");
+            document.getElementById("toast-text").innerText = msg;
+            t.className = `fixed bottom-5 right-5 text-white px-4 py-3 rounded-xl shadow-xl z-50 transition-all ${type==='success'?'bg-emerald-500':type==='error'?'bg-red-500':'bg-blue-600'}`;
+            setTimeout(() => t.classList.add("translate-y-24", "opacity-0"), 3000);
+        }
+    </script>
+</body>
+</html>
