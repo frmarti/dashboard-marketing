@@ -1385,108 +1385,63 @@
             const checkboxes = document.querySelectorAll('#form-media-group input[type="checkbox"]');
             checkboxes.forEach(cb => {
                 cb.checked = ev.media ? ev.media.includes(cb.value) : false;
-            });
+           // Pega la URL que copiaste de Apps Script aquí abajo:
+const APPS_SCRIPT_URL = "PEGA_TU_URL_DE_APPS_SCRIPT_AQUI";
 
-            document.getElementById("modal-title").innerText = "Editar Actividad";
-            document.getElementById("event-modal").classList.remove("hidden");
-        }
+function saveEventForm(e) {
+    e.preventDefault();
 
-        function editCurrentDrawerEvent() {
-            if (selectedEventId) {
-                editEvent(selectedEventId);
-            }
-        }
+    const id = document.getElementById("form-event-id").value || "ev_" + Date.now();
+    const title = document.getElementById("form-title").value.trim();
+    const date = document.getElementById("form-date").value;
+    const category = document.getElementById("form-category").value;
+    const segment = document.getElementById("form-segment").value;
+    const location = document.getElementById("form-location").value.trim();
+    const responsable = document.getElementById("form-responsable").value.trim();
+    const contraparte = document.getElementById("form-contraparte").value.trim();
+    const description = document.getElementById("form-description").value.trim();
+    const cost = parseInt(document.getElementById("form-cost").value) || 0;
+    const invitados = parseInt(document.getElementById("form-guests").value) || 0;
+    const medicionType = document.getElementById("form-medicion-type").value;
+    const medicionValue = document.getElementById("form-medicion-value").value.trim();
 
-        function duplicateEvent(id) {
-            const ev = events.find(e => e.id === id);
-            if (!ev) return;
+    const selectedMedia = [];
+    const checkboxes = document.querySelectorAll('#form-media-group input[type="checkbox"]:checked');
+    checkboxes.forEach(cb => selectedMedia.push(cb.value));
 
-            const newId = "ev_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-            const duplicatedEvent = {
-                ...ev,
-                id: newId,
-                title: ev.title + " (Copia)"
-            };
+    const newEvent = { 
+        id, title, date, category, segment, location, responsable, 
+        contraparte, description, cost, invitados, medicionType, 
+        medicionValue, media: selectedMedia 
+    };
 
-            events.push(duplicatedEvent);
-            saveStateToLocalStorage();
-            updateDashboard();
-            showToast("Actividad duplicada exitosamente", "success");
-        }
+    // 1. Lo mostramos inmediatamente en el dashboard para que se sienta rápido
+    const idx = events.findIndex(item => item.id === id);
+    if (idx > -1) {
+        events[idx] = newEvent;
+    } else {
+        events.push(newEvent);
+    }
+    
+    updateDashboard();
+    closeEventModal();
+    showToast("Guardando en Google Drive...", "info");
 
-        function duplicateCurrentDrawerEvent() {
-            if (selectedEventId) {
-                duplicateEvent(selectedEventId);
-                closeDrawer();
-            }
-        }
-
-        function saveEventForm(e) {
-            e.preventDefault();
-
-            const id = document.getElementById("form-event-id").value;
-            const title = document.getElementById("form-title").value.trim();
-            const date = document.getElementById("form-date").value;
-            const category = document.getElementById("form-category").value;
-            const segment = document.getElementById("form-segment").value;
-            const location = document.getElementById("form-location").value.trim();
-            const responsable = document.getElementById("form-responsable").value.trim();
-            const contraparte = document.getElementById("form-contraparte").value.trim();
-            const description = document.getElementById("form-description").value.trim();
-            const cost = parseInt(document.getElementById("form-cost").value) || 0;
-            const invitados = parseInt(document.getElementById("form-guests").value) || 0;
-            const medicionType = document.getElementById("form-medicion-type").value;
-            const medicionValue = document.getElementById("form-medicion-value").value.trim();
-
-            const selectedMedia = [];
-            const checkboxes = document.querySelectorAll('#form-media-group input[type="checkbox"]:checked');
-            checkboxes.forEach(cb => selectedMedia.push(cb.value));
-
-            if (id) {
-                const idx = events.findIndex(item => item.id === id);
-                if (idx > -1) {
-                    events[idx] = { id, title, date, category, segment, location, responsable, contraparte, description, cost, invitados, medicionType, medicionValue, media: selectedMedia };
-                    showToast("Actividad actualizada exitosamente", "success");
-                }
-            } else {
-                const newId = "ev_" + Date.now();
-                events.push({ id: newId, title, date, category, segment, location, responsable, contraparte, description, cost, invitados, medicionType, medicionValue, media: selectedMedia });
-                showToast("Actividad agregada exitosamente", "success");
-            }
-
-            saveStateToLocalStorage();
-            closeEventModal();
-            updateDashboard();
-        }
-
-        function triggerDelete(id) {
-            const ev = events.find(e => e.id === id);
-            if (!ev) return;
-            eventIdToDelete = id;
-            document.getElementById("delete-confirm-text").innerText = `¿Estás completamente seguro de que deseas eliminar "${ev.title}"?`;
-            document.getElementById("delete-confirm-modal").classList.remove("hidden");
-        }
-
-        function confirmDeleteAction() {
-            if (eventIdToDelete) {
-                events = events.filter(e => e.id !== eventIdToDelete);
-                saveStateToLocalStorage();
-                updateDashboard();
-                showToast("Actividad eliminada", "info");
-                closeDeleteConfirmModal();
-                closeDrawer();
-            }
-        }
-
-        function triggerCustomDelete() {
-            if (selectedEventId) {
-                triggerDelete(selectedEventId);
-            }
-        }
-
-        function closeDeleteConfirmModal() {
-            document.getElementById("delete-confirm-modal").classList.add("hidden");
-            eventIdToDelete = null;
+    // 2. Lo enviamos silenciosamente a Google Sheets
+    fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Esto evita bloqueos de seguridad del navegador
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newEvent)
+    }).then(() => {
+        showToast("¡Guardado exitoso en el Excel!", "success");
+    }).catch(err => {
+        console.error("Error al guardar en Drive:", err);
+        showToast("Error al conectar con Drive", "error");
+    });
+}
         }
 
         function formatSpanishDate(dateStr) {
