@@ -6,8 +6,6 @@
     <title>Consolidado MKT 2026 - Bci Inversiones</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PapaParse para leer CSV desde Google Sheets -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -629,148 +627,85 @@
 
     <!-- JAVASCRIPT LOGIC ENGINE -->
     <script>
-        
-        // Configuración de Categorías unificadas según requerimientos
+        // Configuración de Categorías unificadas
         const marketingCategories = {
-            "eventos": { 
-                label: "Eventos", 
-                color: "bg-[#eccfe8]", 
-                light: "bg-[#fcf0fa] border-[#f9e1f5]", 
-                labelStyle: "text-[#86198f] bg-[#eccfe8]",
-                textColor: "text-[#86198f]"
-            },
-            "campanas": { 
-                label: "Campañas", 
-                color: "bg-[#fef08a]", 
-                light: "bg-[#fefce8] border-[#fef08a]", 
-                labelStyle: "text-[#854d0e] bg-[#fef9c3]",
-                textColor: "text-[#a16207]"
-            },
-            "podcast-capsulas": { 
-                label: "Podcast/Cápsulas", 
-                color: "bg-[#dbeafe]", 
-                light: "bg-[#f0f9ff] border-[#dbeafe]", 
-                labelStyle: "text-[#1e40af] bg-[#dbeafe]",
-                textColor: "text-[#1e40af]"
-            },
-            "informes": { 
-                label: "Informes", 
-                color: "bg-[#93c5fd]", 
-                light: "bg-[#f0f7ff] border-[#93c5fd]", 
-                labelStyle: "text-[#1e3a8a] bg-[#bfdbfe]",
-                textColor: "text-[#1e3a8a]"
-            },
-            "auspicios": { 
-                label: "Auspicios", 
-                color: "bg-[#c1f0c2]", 
-                light: "bg-[#f6fff6] border-[#c1f0c2]", 
-                labelStyle: "text-[#065f46] bg-[#d1fad3]",
-                textColor: "text-[#065f46]"
-            }
+            "eventos": { label: "Eventos", color: "bg-[#eccfe8]", light: "bg-[#fcf0fa] border-[#f9e1f5]", labelStyle: "text-[#86198f] bg-[#eccfe8]", textColor: "text-[#86198f]" },
+            "campanas": { label: "Campañas", color: "bg-[#fef08a]", light: "bg-[#fefce8] border-[#fef08a]", labelStyle: "text-[#854d0e] bg-[#fef9c3]", textColor: "text-[#a16207]" },
+            "podcast-capsulas": { label: "Podcast/Cápsulas", color: "bg-[#dbeafe]", light: "bg-[#f0f9ff] border-[#dbeafe]", labelStyle: "text-[#1e40af] bg-[#dbeafe]", textColor: "text-[#1e40af]" },
+            "informes": { label: "Informes", color: "bg-[#93c5fd]", light: "bg-[#f0f7ff] border-[#93c5fd]", labelStyle: "text-[#1e3a8a] bg-[#bfdbfe]", textColor: "text-[#1e3a8a]" },
+            "auspicios": { label: "Auspicios", color: "bg-[#c1f0c2]", light: "bg-[#f6fff6] border-[#c1f0c2]", labelStyle: "text-[#065f46] bg-[#d1fad3]", textColor: "text-[#065f46]" }
         };
 
-        // Feriados Chilenos Oficiales de 2026
         const holidays2026 = {
-            "2026-01-01": "Año Nuevo",
-            "2026-04-03": "Viernes Santo",
-            "2026-04-04": "Sábado Santo",
-            "2026-05-01": "Día del Trabajo",
-            "2026-05-21": "Glorias Navales",
-            "2026-06-21": "Día Pueblos Indígenas",
-            "2026-06-29": "San Pedro y San Pablo",
-            "2026-07-16": "Virgen del Carmen",
-            "2026-08-15": "Asunción de la Virgen",
-            "2026-09-18": "Fiestas Patrias",
-            "2026-09-19": "Glorias del Ejército",
-            "2026-10-12": "Encuentro Dos Mundos",
-            "2026-10-31": "Día Iglesias Evangélicas",
-            "2026-11-01": "Día de Todos los Santos",
-            "2026-12-08": "Inmaculada Concepción",
-            "2026-12-25": "Navidad"
+            "2026-01-01": "Año Nuevo", "2026-04-03": "Viernes Santo", "2026-04-04": "Sábado Santo", "2026-05-01": "Día del Trabajo", "2026-05-21": "Glorias Navales", "2026-06-21": "Día Pueblos Indígenas", "2026-06-29": "San Pedro y San Pablo", "2026-07-16": "Virgen del Carmen", "2026-08-15": "Asunción de la Virgen", "2026-09-18": "Fiestas Patrias", "2026-09-19": "Glorias del Ejército", "2026-10-12": "Encuentro Dos Mundos", "2026-10-31": "Día Iglesias Evangélicas", "2026-11-01": "Día de Todos los Santos", "2026-12-08": "Inmaculada Concepción", "2026-12-25": "Navidad"
         };
 
-        const segmentList = [
-            "BAM",
-            "BCB",
-            "Private Banking",
-            "Afluente",
-            "Masivo",
-            "Interno",
-            "Institucionales BAM",
-            "Institucionales BCB"
-        ];
+        const segmentList = ["BAM", "BCB", "Private Banking", "Afluente", "Masivo", "Interno", "Institucionales BAM", "Institucionales BCB"];
 
-        // 1. Inicializamos los eventos vacíos
+        // Tu enlace a Google Apps Script
+        const APPS_SCRIPT_URL = "https://script.google.com/a/macros/bci.cl/s/AKfycbzcbNP_nKbf6kBE7BRxVj8Q9E_0DCycZS2l2AkrfY4vejbLGJkt108jx5LZXtcM6liwgA/exec";
+
         let events = []; 
-
-        // 2. Enlace de Google Sheets (CSV) proporcionado
-        const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR63S85QZJFfv6tbxfZ_6A4-ohAtyVaZA0XpictILkrzlLbJsipRYKRdecL_63TggErBiDC1_mmtlFz/pub?gid=84568461&single=true&output=csv"; 
-
-        // Global state and date contexts
-        let currentDate = new Date(2026, 5, 1); // Defaults to June 2026 as initial context
-        let currentView = "calendar"; // calendar, list, charts
+        let currentDate = new Date(2026, 5, 1);
+        let currentView = "calendar";
         let selectedEventId = null;
         let eventIdToDelete = null;
 
-        // Active filters state
         let activeFilters = {
             search: "",
             categories: Object.keys(marketingCategories),
             segments: [...segmentList]
         };
 
-        // Al cargar la página, iniciamos los filtros y cargamos los datos de Google Sheets
         window.onload = function() {
             initFilterPanels();
             cargarDatosDesdeSheets();
         };
 
-        // Función para cargar los datos desde Google Sheets vía CSV
         function cargarDatosDesdeSheets() {
             showToast("Cargando datos desde Drive...", "info");
 
-            Papa.parse(SHEET_CSV_URL, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
-                complete: function(results) {
-                    events = results.data.map(row => ({
-                        id: row.id || "ev_" + Math.random().toString(36).substr(2, 9),
-                        title: row.title,
-                        date: row.date,
-                        category: row.category,
-                        segment: row.segment,
-                        location: row.location,
-                        responsable: row.responsable,
-                        contraparte: row.contraparte,
-                        description: row.description,
-                        cost: parseInt(row.cost) || 0,
-                        invitados: parseInt(row.invitados) || 0,
-                        medicionType: row.medicionType,
-                        medicionValue: row.medicionValue,
-                        media: row.media ? row.media.split(",").map(m => m.trim()) : [] 
-                    }));
+            fetch(APPS_SCRIPT_URL)
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Datos recibidos:", data);
+                    if(data.error) throw new Error(data.error);
+
+                    events = data.map(row => {
+                        let rawCategory = (row.category || row.Category || "otros").toLowerCase().trim();
+                        let formattedDate = row.date || row.Date || "";
+                        if (formattedDate.includes("T")) formattedDate = formattedDate.split("T")[0];
+
+                        return {
+                            id: row.id || row.Id || "ev_" + Math.random().toString(36).substr(2, 9),
+                            title: row.title || row.Title || "Sin título",
+                            date: formattedDate,
+                            category: rawCategory,
+                            segment: (row.segment || row.Segment || "").trim(),
+                            location: row.location || row.Location || "",
+                            responsable: row.responsable || row.Responsable || "",
+                            contraparte: row.contraparte || row.Contraparte || "",
+                            description: row.description || row.Description || "",
+                            cost: parseInt(row.cost || row.Cost) || 0,
+                            invitados: parseInt(row.invitados || row.Invitados) || 0,
+                            medicionType: row.medicionType || row.MedicionType || "",
+                            medicionValue: row.medicionValue || row.MedicionValue || "",
+                            media: row.media ? row.media.toString().split(",").map(m => m.trim()) : [] 
+                        };
+                    });
 
                     updateDashboard();
                     showToast("Datos sincronizados exitosamente", "success");
-                },
-                error: function(err) {
-                    console.error("Error leyendo el CSV:", err);
-                    showToast("Error de conexión. Cargando respaldo local...", "error");
+                })
+                .catch(err => {
+                    console.error("Error leyendo la API:", err);
+                    showToast("Error de conexión. Cargando respaldo...", "error");
                     loadResilientLocalBackup(); 
-                }
-            });
+                });
         }
 
-        // Busca de forma progresiva en todas las claves posibles de almacenamiento local históricas
         function loadResilientLocalBackup() {
-            const keysToTry = [
-                "bci_mkt_consolidado_2026_v4_0",
-                "bci_mkt_consolidado_2026_v3_1",
-                "bci_mkt_consolidado_2026_v3_0",
-                "bci_mkt_events_2026"
-            ];
-            
+            const keysToTry = ["bci_mkt_consolidado_2026_v4_0", "bci_mkt_consolidado_2026_v3_1", "bci_mkt_consolidado_2026_v3_0"];
             let loadedEvents = null;
             for (let key of keysToTry) {
                 const rawData = localStorage.getItem(key);
@@ -779,36 +714,20 @@
                         const parsed = JSON.parse(rawData);
                         if (Array.isArray(parsed) && parsed.length > 0) {
                             loadedEvents = parsed;
-                            console.log("Carga exitosa recuperada desde la clave local:", key);
                             break;
                         }
-                    } catch(err) {
-                        console.warn("Clave con formato incorrecto, intentando la siguiente...", key);
-                    }
+                    } catch(err) { }
                 }
             }
 
-            if (loadedEvents) {
-                events = loadedEvents;
-            } else {
-                console.log("No se detectaron datos guardados manualmente.");
-            }
-
+            if (loadedEvents) events = loadedEvents;
             updateDashboard();
         }
 
-        // Guarda el estado en todas las claves históricas para evitar inconsistencias
         function saveStateToLocalStorage() {
             const serialized = JSON.stringify(events);
-            const keysToSave = [
-                "bci_mkt_consolidado_2026_v4_0",
-                "bci_mkt_consolidado_2026_v3_1",
-                "bci_mkt_consolidado_2026_v3_0"
-            ];
-            
-            keysToSave.forEach(key => {
-                localStorage.setItem(key, serialized);
-            });
+            const keysToSave = ["bci_mkt_consolidado_2026_v4_0", "bci_mkt_consolidado_2026_v3_1", "bci_mkt_consolidado_2026_v3_0"];
+            keysToSave.forEach(key => localStorage.setItem(key, serialized));
         }
 
         function isToday(dateStr) {
@@ -819,9 +738,7 @@
             return dateStr === `${yyyy}-${mm}-${dd}`;
         }
 
-        // Initialize Filter Checkboxes / Buttons
         function initFilterPanels() {
-            // Populate category filters
             const catContainer = document.getElementById("category-filters");
             catContainer.innerHTML = "";
             Object.keys(marketingCategories).forEach(key => {
@@ -835,7 +752,6 @@
                 `;
             });
 
-            // Populate Segment filters as pills
             const segmentsContainer = document.getElementById("segment-filters");
             segmentsContainer.innerHTML = "";
             segmentList.forEach(seg => {
@@ -846,7 +762,6 @@
                 `;
             });
 
-            // Set legend footer
             const legendFooter = document.getElementById("legend-footer");
             legendFooter.innerHTML = `<span class="font-bold text-slate-400 uppercase">Leyenda:</span>`;
             Object.keys(marketingCategories).forEach(key => {
@@ -879,21 +794,15 @@
 
         function toggleCategoryFilter(key) {
             const index = activeFilters.categories.indexOf(key);
-            if (index > -1) {
-                activeFilters.categories.splice(index, 1);
-            } else {
-                activeFilters.categories.push(key);
-            }
+            if (index > -1) activeFilters.categories.splice(index, 1);
+            else activeFilters.categories.push(key);
             updateDashboard();
         }
 
         function toggleSegmentFilter(seg) {
             const index = activeFilters.segments.indexOf(seg);
-            if (index > -1) {
-                activeFilters.segments.splice(index, 1);
-            } else {
-                activeFilters.segments.push(seg);
-            }
+            if (index > -1) activeFilters.segments.splice(index, 1);
+            else activeFilters.segments.push(seg);
             updateSegmentPillStyles();
             updateDashboard();
         }
@@ -936,32 +845,18 @@
 
         function updateDashboard() {
             renderKPIs();
-            
-            if (currentView === "calendar") {
-                renderCalendar();
-            } else if (currentView === "list") {
-                renderList();
-            } else if (currentView === "charts") {
-                renderCharts();
-            }
+            if (currentView === "calendar") renderCalendar();
+            else if (currentView === "list") renderList();
+            else if (currentView === "charts") renderCharts();
         }
 
         function renderKPIs() {
             const filtered = getFilteredEvents();
-            
             document.getElementById("kpi-total-activities").innerText = filtered.length;
-
-            const eventsCount = filtered.filter(e => e.category === "eventos").length;
-            document.getElementById("kpi-total-events").innerText = eventsCount;
-            
-            const campaignCount = filtered.filter(e => e.category === "campanas").length;
-            document.getElementById("kpi-total-campaigns").innerText = campaignCount;
-
-            const podcastCapsuleCount = filtered.filter(e => e.category === "podcast-capsulas").length;
-            document.getElementById("kpi-total-podcasts").innerText = podcastCapsuleCount;
-
-            const reportsCount = filtered.filter(e => e.category === "informes").length;
-            document.getElementById("kpi-total-reports").innerText = reportsCount;
+            document.getElementById("kpi-total-events").innerText = filtered.filter(e => e.category === "eventos").length;
+            document.getElementById("kpi-total-campaigns").innerText = filtered.filter(e => e.category === "campanas").length;
+            document.getElementById("kpi-total-podcasts").innerText = filtered.filter(e => e.category === "podcast-capsulas").length;
+            document.getElementById("kpi-total-reports").innerText = filtered.filter(e => e.category === "informes").length;
         }
 
         function renderCalendar() {
@@ -970,7 +865,6 @@
 
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
-
             const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             document.getElementById("calendar-title").innerText = `${monthNames[month]} ${year}`;
 
@@ -981,44 +875,36 @@
             const prevLastDayDate = new Date(year, month, 0).getDate();
 
             const filteredEvents = getFilteredEvents();
-
             const eventsByDate = {};
             filteredEvents.forEach(ev => {
                 eventsByDate[ev.date] = eventsByDate[ev.date] || [];
                 eventsByDate[ev.date].push(ev);
             });
 
-            // Previous month
             for (let i = firstDayIndex; i > 0; i--) {
                 const dayNum = prevLastDayDate - i + 1;
                 const formattedMonth = String(month === 0 ? 12 : month).padStart(2, '0');
                 const formattedYear = month === 0 ? year - 1 : year;
                 const fullDateStr = `${formattedYear}-${formattedMonth}-${String(dayNum).padStart(2, '0')}`;
-                
                 calendarGrid.appendChild(createCalendarDayNode(dayNum, true, fullDateStr, []));
             }
 
-            // Current Month
             for (let i = 1; i <= lastDayDate; i++) {
                 const fullDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
                 const dayEvents = eventsByDate[fullDateStr] || [];
-                
                 calendarGrid.appendChild(createCalendarDayNode(i, false, fullDateStr, dayEvents));
             }
 
-            // Next month
             const totalCells = firstDayIndex + lastDayDate;
             const remainingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
             for (let i = 1; i <= remainingCells; i++) {
                 const formattedMonth = String(month === 11 ? 1 : month + 2).padStart(2, '0');
                 const formattedYear = month === 11 ? year + 1 : year;
                 const fullDateStr = `${formattedYear}-${formattedMonth}-${String(i).padStart(2, '0')}`;
-
                 calendarGrid.appendChild(createCalendarDayNode(i, true, fullDateStr, []));
             }
         }
 
-        // Renderizado del nodo del calendario
         function createCalendarDayNode(dayNum, isTrailing, dateString, dayEvents) {
             const cell = document.createElement("div");
             cell.className = `min-h-[120px] h-auto border border-slate-100 rounded-xl p-1.5 flex flex-col justify-between transition-all ${isTrailing ? 'bg-slate-50 opacity-40' : 'bg-white hover:bg-slate-50/50'}`;
@@ -1421,9 +1307,6 @@
             }
         }
 
-        // Pega la URL que copiaste de Apps Script aquí abajo:
-        const APPS_SCRIPT_URL = "https://script.google.com/a/macros/bci.cl/s/AKfycbxwrcpmK7VNHJQjRiRRBxsBNG4zh9IsitZx48ICYGQnt0EepgxKf1J-I8lB1seSU9IH4Q/exec";
-
         function saveEventForm(e) {
             e.preventDefault();
 
@@ -1451,7 +1334,6 @@
                 medicionValue, media: selectedMedia 
             };
 
-            // 1. Lo mostramos inmediatamente en el dashboard para que se sienta rápido
             const idx = events.findIndex(item => item.id === id);
             if (idx > -1) {
                 events[idx] = newEvent;
@@ -1463,10 +1345,9 @@
             closeEventModal();
             showToast("Guardando en Google Drive...", "info");
 
-            // 2. Lo enviamos silenciosamente a Google Sheets
             fetch(APPS_SCRIPT_URL, {
                 method: 'POST',
-                mode: 'no-cors', // Esto evita bloqueos de seguridad del navegador
+                mode: 'no-cors',
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -1522,7 +1403,6 @@
             return dateStr;
         }
 
-        // TOAST SYSTEM
         function showToast(message, type = "info") {
             const toast = document.getElementById("toast-notification");
             const text = document.getElementById("toast-text");
