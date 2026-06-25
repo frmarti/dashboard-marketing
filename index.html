@@ -6,6 +6,8 @@
     <title>Consolidado MKT 2026 - Bci Inversiones</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse para leer CSV desde Google Sheets -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -642,7 +644,10 @@
 
         const segmentList = ["BAM", "BCB", "Private Banking", "Afluente", "Masivo", "Interno", "Institucionales BAM", "Institucionales BCB"];
 
-        // Tu enlace a Google Apps Script
+        // 1. Enlace CSV para LEER los datos (Evade el bloqueo corporativo)
+        const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR63S85QZJFfv6tbxfZ_6A4-ohAtyVaZA0XpictILkrzlLbJsipRYKRdecL_63TggErBiDC1_mmtlFz/pub?gid=84568461&single=true&output=csv";
+        
+        // 2. Enlace API para ESCRIBIR nuevos datos (Guardar)
         const APPS_SCRIPT_URL = "https://script.google.com/a/macros/bci.cl/s/AKfycbzcbNP_nKbf6kBE7BRxVj8Q9E_0DCycZS2l2AkrfY4vejbLGJkt108jx5LZXtcM6liwgA/exec";
 
         let events = []; 
@@ -665,43 +670,49 @@
         function cargarDatosDesdeSheets() {
             showToast("Cargando datos desde Drive...", "info");
 
-            fetch(APPS_SCRIPT_URL)
-                .then(response => response.json())
-                .then(data => {
-                    console.log("Datos recibidos:", data);
-                    if(data.error) throw new Error(data.error);
+            Papa.parse(SHEET_CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                transformHeader: function(header) {
+                    return header.trim().toLowerCase();
+                },
+                complete: function(results) {
+                    console.log("Datos recibidos del Excel:", results.data);
 
-                    events = data.map(row => {
-                        let rawCategory = (row.category || row.Category || "otros").toLowerCase().trim();
-                        let formattedDate = row.date || row.Date || "";
-                        if (formattedDate.includes("T")) formattedDate = formattedDate.split("T")[0];
+                    events = results.data.map((row, index) => {
+                        let rawCategory = (row["area"] || row["category"] || "otros").toLowerCase().trim();
+                        if(rawCategory === "campañas" || rawCategory === "campaña") rawCategory = "campanas";
+                        
+                        let costoString = (row["monto total (con iva)"] || row["cost"] || "0").toString().replace(/\D/g,'');
 
                         return {
-                            id: row.id || row.Id || "ev_" + Math.random().toString(36).substr(2, 9),
-                            title: row.title || row.Title || "Sin título",
-                            date: formattedDate,
+                            id: row["id"] || "ev_csv_" + index,
+                            title: row["item"] || row["title"] || "Sin título",
+                            date: row["fecha"] || row["date"] || "",
                             category: rawCategory,
-                            segment: (row.segment || row.Segment || "").trim(),
-                            location: row.location || row.Location || "",
-                            responsable: row.responsable || row.Responsable || "",
-                            contraparte: row.contraparte || row.Contraparte || "",
-                            description: row.description || row.Description || "",
-                            cost: parseInt(row.cost || row.Cost) || 0,
-                            invitados: parseInt(row.invitados || row.Invitados) || 0,
-                            medicionType: row.medicionType || row.MedicionType || "",
-                            medicionValue: row.medicionValue || row.MedicionValue || "",
-                            media: row.media ? row.media.toString().split(",").map(m => m.trim()) : [] 
+                            segment: (row["segmento"] || row["segment"] || "").trim(),
+                            location: row["lugar"] || row["location"] || "",
+                            responsable: row["responsable"] || "",
+                            contraparte: row["proveedor"] || row["contraparte"] || "",
+                            description: row["detalle"] || row["description"] || "",
+                            cost: parseInt(costoString) || 0,
+                            invitados: parseInt(row["n clientes"] || row["invitados"]) || 0,
+                            medicionType: row["mediciontype"] || "",
+                            medicionValue: row["medicionvalue"] || "",
+                            media: []
                         };
                     });
 
                     updateDashboard();
                     showToast("Datos sincronizados exitosamente", "success");
-                })
-                .catch(err => {
-                    console.error("Error leyendo la API:", err);
+                },
+                error: function(err) {
+                    console.error("Error leyendo el CSV:", err);
                     showToast("Error de conexión. Cargando respaldo...", "error");
                     loadResilientLocalBackup(); 
-                });
+                }
+            });
         }
 
         function loadResilientLocalBackup() {
@@ -719,7 +730,6 @@
                     } catch(err) { }
                 }
             }
-
             if (loadedEvents) events = loadedEvents;
             updateDashboard();
         }
@@ -773,7 +783,6 @@
                     </div>
                 `;
             });
-
             updateSegmentPillStyles();
         }
 
@@ -991,19 +1000,11 @@
                 chartsView.classList.remove("hidden");
                 chartsBtn.className = "px-4 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-900 shadow-sm";
             }
-
             updateDashboard();
         }
 
-        function prevMonth() {
-            currentDate.setMonth(currentDate.getMonth() - 1);
-            updateDashboard();
-        }
-
-        function nextMonth() {
-            currentDate.setMonth(currentDate.getMonth() + 1);
-            updateDashboard();
-        }
+        function prevMonth() { currentDate.setMonth(currentDate.getMonth() - 1); updateDashboard(); }
+        function nextMonth() { currentDate.setMonth(currentDate.getMonth() + 1); updateDashboard(); }
 
         function renderList() {
             const tableBody = document.getElementById("list-table-body");
@@ -1031,9 +1032,7 @@
                     <td class="px-4 py-3 whitespace-nowrap text-xs font-bold text-slate-500">${formatSpanishDate(ev.date)}</td>
                     <td class="px-4 py-3 font-bold text-slate-900 text-xs">${ev.title}</td>
                     <td class="px-4 py-3 whitespace-nowrap">
-                        <span class="px-2.5 py-1 rounded-full text-[9px] font-extrabold ${catInfo.labelStyle}">
-                            ${catInfo.label}
-                        </span>
+                        <span class="px-2.5 py-1 rounded-full text-[9px] font-extrabold ${catInfo.labelStyle}">${catInfo.label}</span>
                     </td>
                     <td class="px-4 py-3 text-xs text-slate-500">${mediaString}</td>
                     <td class="px-4 py-3 whitespace-nowrap">
@@ -1043,18 +1042,10 @@
                     <td class="px-4 py-3 text-xs font-bold text-slate-800">${costFormatted}</td>
                     <td class="px-4 py-3 text-center">
                         <div class="flex items-center justify-center space-x-1">
-                            <button onclick="openDrawer('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900" title="Ver Detalle">
-                                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm-3-9c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-9.543 7c-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                            </button>
-                            <button onclick="editEvent('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Editar">
-                                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                            </button>
-                            <button onclick="duplicateEvent('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-emerald-600" title="Duplicar">
-                                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
-                            </button>
-                            <button onclick="triggerDelete('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Eliminar">
-                                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
+                            <button onclick="openDrawer('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900" title="Ver Detalle"><svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm-3-9c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-9.543 7c-4.477 0-8.268-2.943-9.542-7z"></path></svg></button>
+                            <button onclick="editEvent('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Editar"><svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                            <button onclick="duplicateEvent('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-emerald-600" title="Duplicar"><svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg></button>
+                            <button onclick="triggerDelete('${ev.id}')" class="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Eliminar"><svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                         </div>
                     </td>
                 `;
@@ -1064,13 +1055,10 @@
 
         function renderCharts() {
             const filtered = getFilteredEvents();
-            
             const monthHist = Array(12).fill(0);
             filtered.forEach(e => {
                 const dateObj = new Date(e.date + "T00:00:00"); 
-                if (!isNaN(dateObj.getTime())) {
-                    monthHist[dateObj.getMonth()]++;
-                }
+                if (!isNaN(dateObj.getTime())) monthHist[dateObj.getMonth()]++;
             });
 
             const barContainer = document.getElementById("chart-monthly-bars");
@@ -1081,7 +1069,6 @@
                 const pct = (count / maxVal) * 100;
                 const barWrapper = document.createElement("div");
                 barWrapper.className = "flex flex-col items-center flex-1 group relative cursor-pointer";
-                
                 barWrapper.innerHTML = `
                     <div class="text-[9px] font-bold text-slate-700 opacity-0 group-hover:opacity-100 transition-all absolute -top-6 bg-slate-800 text-white px-1.5 py-0.5 rounded shadow-lg pointer-events-none z-10 whitespace-nowrap">
                         ${count} actividades
@@ -1093,11 +1080,7 @@
 
             const catCounts = {};
             Object.keys(marketingCategories).forEach(k => catCounts[k] = 0);
-            filtered.forEach(e => {
-                if (catCounts[e.category] !== undefined) {
-                    catCounts[e.category]++;
-                }
-            });
+            filtered.forEach(e => { if (catCounts[e.category] !== undefined) catCounts[e.category]++; });
 
             const maxCatVal = Math.max(...Object.values(catCounts), 1);
             const rowContainer = document.getElementById("chart-category-rows");
@@ -1126,20 +1109,13 @@
 
             if (filtered.length > 0) {
                 const segCounts = {};
-                filtered.forEach(e => {
-                    segCounts[e.segment] = (segCounts[e.segment] || 0) + 1;
-                });
-                let topSeg = "N/A";
-                let topSegCount = 0;
+                filtered.forEach(e => { segCounts[e.segment] = (segCounts[e.segment] || 0) + 1; });
+                let topSeg = "N/A"; let topSegCount = 0;
                 Object.keys(segCounts).forEach(s => {
-                    if (segCounts[s] > topSegCount) {
-                        topSegCount = segCounts[s];
-                        topSeg = s;
-                    }
+                    if (segCounts[s] > topSegCount) { topSegCount = segCounts[s]; topSeg = s; }
                 });
                 document.getElementById("stats-peak-segment").innerText = topSeg;
                 document.getElementById("stats-peak-value").innerText = topSegCount;
-
                 const totalCost = filtered.reduce((acc, curr) => acc + (parseInt(curr.cost) || 0), 0);
                 document.getElementById("stats-total-cost").innerText = `$${totalCost.toLocaleString('es-CL')}`;
             } else {
@@ -1162,35 +1138,24 @@
             if (!ev) return;
 
             document.getElementById("drawer-panel").classList.remove("hidden");
-            
             document.getElementById("drawer-id-label").innerText = `ID: ${ev.id}`;
             document.getElementById("drawer-event-title").innerText = ev.title;
             document.getElementById("drawer-event-date").innerText = formatSpanishDate(ev.date);
             document.getElementById("drawer-location").innerText = ev.location || "N/A";
-            
-            const mediaList = (ev.media && ev.media.length > 0) ? ev.media.join(", ") : "Ninguno";
-            document.getElementById("drawer-media").innerText = mediaList;
-            
+            document.getElementById("drawer-media").innerText = (ev.media && ev.media.length > 0) ? ev.media.join(", ") : "Ninguno";
             document.getElementById("drawer-responsable").innerText = ev.responsable || "N/A";
             document.getElementById("drawer-contraparte").innerText = ev.contraparte || "N/A";
             document.getElementById("drawer-description").innerText = ev.description || "Sin notas adicionales registradas.";
-            
             document.getElementById("drawer-cost").innerText = ev.cost ? `$${parseInt(ev.cost).toLocaleString('es-CL')}` : "$0";
             document.getElementById("drawer-guests").innerText = ev.invitados ? parseInt(ev.invitados).toLocaleString('es-CL') : "0";
-            
-            if (ev.medicionType) {
-                document.getElementById("drawer-medicion").innerText = `${ev.medicionType}: ${ev.medicionValue || '(Sin valor de métrica registrado)'}`;
-            } else {
-                document.getElementById("drawer-medicion").innerText = "Sin medición asociada";
-            }
+            document.getElementById("drawer-medicion").innerText = ev.medicionType ? `${ev.medicionType}: ${ev.medicionValue || '(Sin valor)'}` : "Sin medición asociada";
 
             const badge = document.getElementById("drawer-category-badge");
             const catInfo = marketingCategories[ev.category] || { label: "Otros", labelStyle: "text-slate-800 bg-slate-100" };
             badge.innerText = catInfo.label;
             badge.className = `px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider inline-block ${catInfo.labelStyle}`;
 
-            const tagsCont = document.getElementById("drawer-tags-container");
-            tagsCont.innerHTML = `<span class="bg-bciSegmentBlue text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">${ev.segment}</span>`;
+            document.getElementById("drawer-tags-container").innerHTML = `<span class="bg-bciSegmentBlue text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">${ev.segment}</span>`;
         }
 
         function closeDrawer() {
@@ -1215,8 +1180,7 @@
             document.getElementById("form-medicion-value").disabled = true;
             document.getElementById("form-medicion-value").classList.add("bg-slate-100", "cursor-not-allowed");
 
-            const checkboxes = document.querySelectorAll('#form-media-group input[type="checkbox"]');
-            checkboxes.forEach(cb => cb.checked = false);
+            document.querySelectorAll('#form-media-group input[type="checkbox"]').forEach(cb => cb.checked = false);
 
             document.getElementById("modal-title").innerText = "Nueva Actividad de Marketing";
             document.getElementById("event-modal").classList.remove("hidden");
@@ -1234,7 +1198,6 @@
         function handleMedicionTypeChange() {
             const select = document.getElementById("form-medicion-type");
             const valueInput = document.getElementById("form-medicion-value");
-            
             if (select.value) {
                 valueInput.disabled = false;
                 valueInput.placeholder = "Ej: 95% de aprobación, 3.4k impresiones...";
@@ -1265,11 +1228,9 @@
             document.getElementById("form-guests").value = ev.invitados || "";
             document.getElementById("form-medicion-type").value = ev.medicionType || "";
             document.getElementById("form-medicion-value").value = ev.medicionValue || "";
-            
             handleMedicionTypeChange();
 
-            const checkboxes = document.querySelectorAll('#form-media-group input[type="checkbox"]');
-            checkboxes.forEach(cb => {
+            document.querySelectorAll('#form-media-group input[type="checkbox"]').forEach(cb => {
                 cb.checked = ev.media ? ev.media.includes(cb.value) : false;
             });
 
@@ -1277,23 +1238,13 @@
             document.getElementById("event-modal").classList.remove("hidden");
         }
 
-        function editCurrentDrawerEvent() {
-            if (selectedEventId) {
-                editEvent(selectedEventId);
-            }
-        }
+        function editCurrentDrawerEvent() { if (selectedEventId) editEvent(selectedEventId); }
 
         function duplicateEvent(id) {
             const ev = events.find(e => e.id === id);
             if (!ev) return;
-
             const newId = "ev_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-            const duplicatedEvent = {
-                ...ev,
-                id: newId,
-                title: ev.title + " (Copia)"
-            };
-
+            const duplicatedEvent = { ...ev, id: newId, title: ev.title + " (Copia)" };
             events.push(duplicatedEvent);
             saveStateToLocalStorage();
             updateDashboard();
@@ -1301,10 +1252,7 @@
         }
 
         function duplicateCurrentDrawerEvent() {
-            if (selectedEventId) {
-                duplicateEvent(selectedEventId);
-                closeDrawer();
-            }
+            if (selectedEventId) { duplicateEvent(selectedEventId); closeDrawer(); }
         }
 
         function saveEventForm(e) {
@@ -1325,8 +1273,7 @@
             const medicionValue = document.getElementById("form-medicion-value").value.trim();
 
             const selectedMedia = [];
-            const checkboxes = document.querySelectorAll('#form-media-group input[type="checkbox"]:checked');
-            checkboxes.forEach(cb => selectedMedia.push(cb.value));
+            document.querySelectorAll('#form-media-group input[type="checkbox"]:checked').forEach(cb => selectedMedia.push(cb.value));
 
             const newEvent = { 
                 id, title, date, category, segment, location, responsable, 
@@ -1335,11 +1282,7 @@
             };
 
             const idx = events.findIndex(item => item.id === id);
-            if (idx > -1) {
-                events[idx] = newEvent;
-            } else {
-                events.push(newEvent);
-            }
+            if (idx > -1) { events[idx] = newEvent; } else { events.push(newEvent); }
             
             updateDashboard();
             closeEventModal();
@@ -1348,9 +1291,7 @@
             fetch(APPS_SCRIPT_URL, {
                 method: 'POST',
                 mode: 'no-cors',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newEvent)
             }).then(() => {
                 showToast("¡Guardado exitoso en el Excel!", "success");
@@ -1379,11 +1320,7 @@
             }
         }
 
-        function triggerCustomDelete() {
-            if (selectedEventId) {
-                triggerDelete(selectedEventId);
-            }
-        }
+        function triggerCustomDelete() { if (selectedEventId) triggerDelete(selectedEventId); }
 
         function closeDeleteConfirmModal() {
             document.getElementById("delete-confirm-modal").classList.add("hidden");
@@ -1423,10 +1360,7 @@
             }
 
             toast.classList.remove("translate-y-24", "opacity-0");
-            
-            setTimeout(() => {
-                toast.classList.add("translate-y-24", "opacity-0");
-            }, 3000);
+            setTimeout(() => { toast.classList.add("translate-y-24", "opacity-0"); }, 3000);
         }
     </script>
 </body>
